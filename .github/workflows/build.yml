@@ -1,4 +1,4 @@
-name: Build Docker Image, Generate SBOM, Run Semgrep, and Scan for Secrets
+name: Build Docker Image, Generate SBOM, Run Semgrep, Scan for Secrets, and Dummy Deploy
 
 on:
   push:
@@ -89,10 +89,10 @@ jobs:
         env:
           GITLEAKS_ARTIFACT_UPLOAD: true
           GITLEAKS_ENABLE_SUMMARY: true
-        continue-on-error: true     # <<< BURASI: hata olsa da devam et
+        continue-on-error: true
         with:
           scan-dir: .
-          fail: true                # <<< Leak bulursa exit 1 ver, ama hata pipeline'ı durdurmasın
+          fail: true
           report-format: sarif
           report-path: reports/gitleaks/gitleaks-results.sarif
 
@@ -102,3 +102,15 @@ jobs:
         with:
           name: gitleaks-sarif-results
           path: reports/gitleaks/gitleaks-results.sarif
+
+  dummy-deploy:
+    runs-on: ubuntu-latest
+    needs: gitleaks-scan
+
+    steps:
+      - name: Dummy Deploy Step
+        run: |
+          echo "🚀 Starting dummy deploy step..."
+          echo "Deploying juice-shop application to dummy environment."
+          sleep 2
+          echo "✅ Dummy deploy completed successfully!"
