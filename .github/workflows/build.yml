@@ -23,6 +23,7 @@ jobs:
       with:
         context: .
         push: false  # DockerHub'a göndermiyoruz, sadece local build
+        load: true 
         tags: juice-shop:latest
 
     - name: Install Syft (for SBOM generation)
