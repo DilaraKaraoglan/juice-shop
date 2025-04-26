@@ -1,172 +1,103 @@
-name: Raconf2025-DevSecOps-Pipeline
+name: Build Docker Image, Generate SBOM, Run Semgrep, and Scan for Secrets
 
 on:
   push:
     branches:
-      - master
-  pull_request:
+      - main
+  workflow_dispatch:
 
 jobs:
-  build-and-syft:
-    name: Build & SBOM
+  build-and-sbom:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
 
+    steps:
+      # 1. Reposunu çek
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Docker için Buildx ortamını kur
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3. Docker image'ı build et (push yapmadan)
       - name: Build Docker image
-        run: |
-          docker build -t juice-shop:${{ github.sha }} .
-
-      - name: Syft SBOM Scan
-        uses: anchore/sbom-action@v0
+        uses: docker/build-push-action@v5
         with:
-          image: "juice-shop:${{ github.sha }}"
-          output-file: "sbom.spdx.json"
-          format: "spdx-json"
+          context: .
+          push: false
+          load: true
+          tags: juice-shop:latest
 
-  # 2) SAST (Semgrep) Job
-  Sast-scan:
-    name: SAST (Semgrep)
-    needs: build-and-syft
-    runs-on: ubuntu-latest
-    container: returntocorp/semgrep
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Semgrep Scan
+      # 4. Syft'ı kur
+      - name: Install Syft
         run: |
-         mkdir -p semgrep/results
-         semgrep ci --config=auto --sarif --output=semgrep/results/semgrep.sarif || true
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-      - name: Upload SARIF File
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'semgrep/results/semgrep.sarif'
-          
-      - name: Upload Semgrep report
+      # 5. SBOM dosyasını oluştur
+      - name: Generate SBOM with Syft
+        run: |
+          mkdir -p reports/sbom
+          syft juice-shop:latest -o spdx-json > reports/sbom/sbom.spdx.json
+
+      # 6. SBOM dosyasını artefakt olarak kaydet
+      - name: Upload SBOM as Artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: semgrep-results
-          path: semgrep/results/
+          name: juice-shop-sbom
+          path: reports/sbom/sbom.spdx.json
 
-  # 3) Gitleaks-scan Job
-  Gitleaks-scan:
-    name: Gitleaks (Secret)
-    needs: Sast-scan
+  semgrep-scan:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      # 1. Reposunu tekrar çek
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: SecretScan
+      # 2. Semgrep'i kur
+      - name: Install Semgrep
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      # 3. Semgrep taraması yap ve SARIF formatında çıktı al
+      - name: Run Semgrep scan and output in SARIF format
+        run: |
+          mkdir -p reports/semgrep
+          semgrep --config=auto --sarif --output=reports/semgrep/semgrep-results.sarif
+
+      # 4. Semgrep sonuçlarını SARIF formatında artefakt olarak kaydet
+      - name: Upload Semgrep SARIF Results as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif-results
+          path: reports/semgrep/semgrep-results.sarif
+
+  gitleaks-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Reposunu tekrar çek
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Gitleaks çıktıları için klasör oluştur
+      - name: Create reports/gitleaks directory
+        run: mkdir -p reports/gitleaks
+
+      # 3. Gitleaks ile gizli bilgi taraması yap
+      - name: Run Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
-          GITLEAKS_ENABLE_SUMMARY: true
         continue-on-error: true
-
-      - name: Upload
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
-          sarif_file: 'results.sarif'
+          scan-dir: .
+          fail: true
+          report-format: sarif
+          report-path: reports/gitleaks/gitleaks-results.sarif
 
-      - name: Upload gitleaks report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: results.sarif
-          path: .
-
-  # 5) Deploy Job (Dummy)
-  deploy:
-    name: Deploy App Production
-    needs:  Gitleaks-scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Dummy Deploy Step
-        run: echo "Deploying app... (This is a dummy step)"
- 
-  # 6) ZAP Scan Job
-  zap_scan:
-      name: ZAP (DAST)
-      needs: deploy
-      runs-on: ubuntu-latest
-      steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Create ZAP output directory
-        run: |
-         mkdir -p zap-output
-         chmod 777 zap-output
-
-      - name: Run ZAP Baseline Scan (with XML report)
-        run: |
-         docker run --rm \
-          -v ${{ github.workspace }}/zap-output:/zap/wrk/:rw \
-          ictu/zap2docker-weekly zap-baseline.py \
-          -t https://example.com \
-          -x zap-report.xml \
-          -I 
-      
-   
-      - name: Upload ZAP XML report as artifact
+      # 4. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
+      - name: Upload Gitleaks SARIF Results as Artifact
         uses: actions/upload-artifact@v4
         with:
-           name: zap-xml-report
-           path: zap-output/zap-report.xml
-
-
-
-  import-defectdojo:
-    name: Import Scans to DefectDojo
-    needs: zap_scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Download Semgrep Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: semgrep-results
-
-      - name: Download Gitleaks Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: results.sarif
-
-      - name: Download Zap Scan Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: zap-xml-report
-
-      - name: Import Semgrep SARIF to DefectDojo
-        env:
-          DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
-        run: |
-         pip install requests
-         python dojoscript.py semgrep.sarif
-
-      - name: Import GitLeaks SARIF to DefectDojo
-        env:
-          DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
-        run: python dojoscript.py results.sarif
-
-      - name: Import GitLeaks SARIF to DefectDojo
-        env:
-          DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
-        run: python dojoscript.py zap-report.xml
+          name: gitleaks-sarif-results
+          path: reports/gitleaks/gitleaks-results.sarif
