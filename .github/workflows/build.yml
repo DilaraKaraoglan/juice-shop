@@ -84,9 +84,10 @@ jobs:
       # 2. Gitleaks ile gizli bilgi taraması yap
       - name: Run Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true     # <<< BURASI: hata olsa da devam et
         with:
           scan-dir: .
-          fail: false
+          fail: true                # <<< Leak bulursa exit 1 ver, ama hata pipeline'ı durdurmasın
           report-format: sarif
           report-path: reports/gitleaks/gitleaks-results.sarif
 
