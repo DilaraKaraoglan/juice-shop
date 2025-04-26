@@ -11,15 +11,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Reposunu çek
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Docker için Buildx ortamını kur
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3. Docker image'ı build et (push yapmadan)
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
@@ -28,18 +25,15 @@ jobs:
           load: true
           tags: juice-shop:latest
 
-      # 4. Syft'ı kur
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-      # 5. SBOM dosyasını oluştur
       - name: Generate SBOM with Syft
         run: |
           mkdir -p reports/sbom
           syft juice-shop:latest -o spdx-json > reports/sbom/sbom.spdx.json
 
-      # 6. SBOM dosyasını artefakt olarak kaydet
       - name: Upload SBOM as Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -50,60 +44,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Reposunu tekrar çek
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Semgrep'i kur
       - name: Install Semgrep
         run: |
           python -m pip install --upgrade pip
           pip install semgrep
 
-      # 3. Semgrep taraması yap ve SARIF formatında çıktı al
-      - name: Run Semgrep scan and output in SARIF format
+      - name: Run Semgrep scan
         run: |
           mkdir -p reports/semgrep
           semgrep --config=auto --sarif --output=reports/semgrep/semgrep-results.sarif
 
-      # 4. Semgrep sonuçlarını SARIF formatında artefakt olarak kaydet
-      - name: Upload Semgrep SARIF Results as Artifact
+      - name: Upload Semgrep SARIF Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/semgrep/semgrep-results.sarif
+
+      - name: Upload Semgrep SARIF Artifact
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-sarif-results
           path: reports/semgrep/semgrep-results.sarif
 
   gitleaks-scan:
+    name: Gitleaks (Secret Scan)
     runs-on: ubuntu-latest
+    needs: semgrep-scan  # önce semgrep-scan bitmeli
 
     steps:
-      # 1. Reposunu tekrar çek
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Gitleaks binary'sini kur ve gerekli klasörü oluştur
-      - name: Install Gitleaks and Prepare Directory
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/main/install.sh | bash
-          mkdir -p reports/gitleaks
-
-      # 3. Gitleaks taraması yap (manuel)
-      - name: Run Gitleaks scan manually
+      - name: Run Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
         continue-on-error: true
-        run: |
-          ./gitleaks detect \
-            --source . \
-            --report-format sarif \
-            --report-path reports/gitleaks/gitleaks-results.sarif \
-            --no-banner
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+          GITLEAKS_ENABLE_SUMMARY: true
 
-      # 4. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
-      - name: Upload Gitleaks SARIF Results as Artifact
+      - name: Upload Gitleaks SARIF Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+
+      - name: Upload Gitleaks SARIF Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: gitleaks-sarif-results
-          path: reports/gitleaks/gitleaks-results.sarif
-          if-no-files-found: warn
-          compression-level: 6
-          overwrite: false
-          include-hidden-files: false
+          path: results.sarif
