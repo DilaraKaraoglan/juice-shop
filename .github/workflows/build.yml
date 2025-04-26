@@ -81,19 +81,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Gitleaks ile gizli bilgi taraması yap
+      # 2. Gitleaks çıktıları için klasör oluştur
+      - name: Create reports/gitleaks directory
+        run: mkdir -p reports/gitleaks
+
+      # 3. Gitleaks ile gizli bilgi taraması yap
       - name: Run Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_ARTIFACT_UPLOAD: true
-        continue-on-error: true     # <<< BURASI: hata olsa da devam et
+        continue-on-error: true
         with:
           scan-dir: .
-          fail: true                # <<< Leak bulursa exit 1 ver, ama hata pipeline'ı durdurmasın
+          fail: true
           report-format: sarif
           report-path: reports/gitleaks/gitleaks-results.sarif
 
-      # 3. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
+      # 4. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
       - name: Upload Gitleaks SARIF Results as Artifact
         uses: actions/upload-artifact@v4
         with:
