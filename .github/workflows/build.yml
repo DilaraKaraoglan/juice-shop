@@ -48,6 +48,7 @@ jobs:
 
   semgrep-scan:
     runs-on: ubuntu-latest
+    needs: build-and-sbom
 
     steps:
       # 1. Reposunu tekrar çek
@@ -75,27 +76,27 @@ jobs:
 
   gitleaks-scan:
     runs-on: ubuntu-latest
+    needs: semgrep-scan
 
     steps:
       # 1. Reposunu tekrar çek
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Gitleaks çıktıları için klasör oluştur
-      - name: Create reports/gitleaks directory
-        run: mkdir -p reports/gitleaks
-
-      # 3. Gitleaks ile gizli bilgi taraması yap
+      # 2. Gitleaks ile gizli bilgi taraması yap
       - name: Run Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
-        continue-on-error: true
+        env:
+          GITLEAKS_ARTIFACT_UPLOAD: true
+          GITLEAKS_ARTIFACT_SUMMARY: true
+        continue-on-error: true     # <<< BURASI: hata olsa da devam et
         with:
           scan-dir: .
-          fail: true
+          fail: true                # <<< Leak bulursa exit 1 ver, ama hata pipeline'ı durdurmasın
           report-format: sarif
           report-path: reports/gitleaks/gitleaks-results.sarif
 
-      # 4. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
+      # 3. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
       - name: Upload Gitleaks SARIF Results as Artifact
         uses: actions/upload-artifact@v4
         with:
