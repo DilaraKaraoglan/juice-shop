@@ -27,13 +27,10 @@ jobs:
         load: true
         tags: juice-shop:latest
 
-    - name: Generate SBOM using Syft
-      uses: anchore/sbom-action@v0.15.4
-      with:
-        image: juice-shop:latest
-        format: cyclonedx-json
-        output-file: sbom.json
-
+    - name: Install Syft (for SBOM generation)
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        
     - name: Upload SBOM artifact
       uses: actions/upload-artifact@v4
       with:
@@ -43,7 +40,7 @@ jobs:
   semgrep-sast:
     name: Semgrep SAST Scan
     runs-on: ubuntu-latest
-    needs: build-and-sbom  # Önce build ve sbom bitmeli
+    
 
     steps:
     - name: Checkout source code
