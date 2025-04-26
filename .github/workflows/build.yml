@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch: # >>> Manuel çalıştırmak için bunu ekledik <<<
 
 jobs:
   build-and-sbom:
@@ -21,7 +22,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        push: false  # DockerHub'a push etmiyoruz, local build
+        push: false  # DockerHub'a göndermiyoruz, sadece local build
         tags: juice-shop:latest
 
     - name: Install Syft (for SBOM generation)
