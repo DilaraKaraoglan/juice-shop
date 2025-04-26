@@ -84,6 +84,8 @@ jobs:
       # 2. Gitleaks ile gizli bilgi taraması yap
       - name: Run Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ARTIFACT_UPLOAD: true
         continue-on-error: true     # <<< BURASI: hata olsa da devam et
         with:
           scan-dir: .
