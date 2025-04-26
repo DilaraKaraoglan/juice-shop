@@ -81,19 +81,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Gitleaks çıktıları için klasör oluştur
-      - name: Create reports/gitleaks directory
-        run: mkdir -p reports/gitleaks
+      # 2. Gitleaks binary'sini kur ve gerekli klasörü oluştur
+      - name: Install Gitleaks and Prepare Directory
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/main/install.sh | bash
+          mkdir -p reports/gitleaks
 
-      # 3. Gitleaks ile gizli bilgi taraması yap
-      - name: Run Gitleaks scan
-        uses: gitleaks/gitleaks-action@v2
+      # 3. Gitleaks taraması yap (manuel)
+      - name: Run Gitleaks scan manually
         continue-on-error: true
-        with:
-          scan-dir: .
-          fail: true
-          report-format: sarif
-          report-path: reports/gitleaks/gitleaks-results.sarif
+        run: |
+          ./gitleaks detect \
+            --source . \
+            --report-format sarif \
+            --report-path reports/gitleaks/gitleaks-results.sarif \
+            --no-banner
 
       # 4. Gitleaks sonuçlarını SARIF formatında artefakt olarak kaydet
       - name: Upload Gitleaks SARIF Results as Artifact
@@ -101,3 +103,7 @@ jobs:
         with:
           name: gitleaks-sarif-results
           path: reports/gitleaks/gitleaks-results.sarif
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
